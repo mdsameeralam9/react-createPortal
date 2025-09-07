@@ -1,41 +1,72 @@
-import React, { useLayoutEffect } from "react";
-import ReactDOM from "react-dom";
+import React, { useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 
 interface ModalProps {
-  children: React.ReactNode;
   open: boolean;
   close: () => void;
+  children: React.ReactNode;
+  // Optional a11y improvements
+  ariaLabel?: string;       
+  ariaLabelledBy?: string;    
 }
 
-const Modal: React.FC<ModalProps> = ({ children, open, close }) => {
-  const [element, setElement] = React.useState<Element | null>(null);
- 
-  useLayoutEffect(() => {
-    // need to insert id in index.html;
-    const modalIdDiv = document.createElement('div');
-    modalIdDiv.setAttribute('id', 'modalRoot');
-    document.body.appendChild(modalIdDiv);
-    const modalRootId = document.getElementById('modalRoot'); 
-    setElement(modalRootId);
+const getModalRoot = (): HTMLElement | null => {
+  if (typeof document === "undefined") return null;
+  let root = document.getElementById("modal-root");
+  if (!root) {
+    // Fallback: create once if no already
+    root = document.createElement("div");
+    root.setAttribute("id", "modal-root");
+    document.body.appendChild(root);
+  }
+  return root as HTMLElement;
+};
 
-    return () => {
-      if (modalRootId) {
-        document.body.removeChild(modalRootId);
+const Modal: React.FC<ModalProps> = ({ open, close, children, ariaLabel, ariaLabelledBy }) => {
+  const modalRoot = useMemo(() => getModalRoot(), []);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        close();
       }
     };
-  }, [])
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, close]);
 
-   if (!open || !element) return null;
+ 
+  // Click outside to close
+  const onBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) close();
+  };
 
-  return ReactDOM.createPortal(
-    <div className="bg-gray-300 z-10 fixed inset-0 w-full h-screen overflow-auto flex justify-center items-center">
-      <div onClick={() => close()}>
-        <>
+  if (!open || !modalRoot) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onMouseDown={onBackdropClick}
+      aria-hidden={false}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
+        tabIndex={-1}
+        className="max-h-[90vh] w-[min(90vw,42rem)] overflow-auto rounded-lg bg-white shadow-xl outline-none"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         {children}
-        </>
       </div>
     </div>,
-    element as HTMLElement
+    modalRoot
   );
 };
 
